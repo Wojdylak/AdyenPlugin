@@ -18,8 +18,10 @@ use Sylius\AdyenPlugin\Bus\Command\PaymentStatusReceived;
 use Sylius\AdyenPlugin\Bus\Command\PrepareOrderForPayment;
 use Sylius\AdyenPlugin\Bus\Command\TakeOverPayment;
 use Sylius\AdyenPlugin\Bus\Query\GetToken;
+use Sylius\AdyenPlugin\Checker\OrderCheckoutCompleteIntegrityCheckerInterface;
 use Sylius\AdyenPlugin\Clearer\PaymentReferencesClearerInterface;
 use Sylius\AdyenPlugin\Entity\AdyenTokenInterface;
+use Sylius\AdyenPlugin\Exception\CheckoutValidationException;
 use Sylius\AdyenPlugin\Processor\PaymentResponseProcessorInterface;
 use Sylius\AdyenPlugin\Provider\AdyenClientProviderInterface;
 use Sylius\AdyenPlugin\Resolver\Order\PaymentCheckoutOrderResolverInterface;
@@ -27,6 +29,7 @@ use Sylius\AdyenPlugin\Traits\PayableOrderPaymentTrait;
 use Sylius\Component\Core\Model\PaymentMethodInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Messenger\HandleTrait;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -45,6 +48,7 @@ class PaymentsAction
         private readonly PaymentResponseProcessorInterface $paymentResponseProcessor,
         private readonly PaymentReferencesClearerInterface $paymentReferencesClearer,
         MessageBusInterface $messageBus,
+        private readonly OrderCheckoutCompleteIntegrityCheckerInterface $orderCheckoutCompleteIntegrityChecker,
     ) {
         $this->messageBus = $messageBus;
     }
@@ -52,6 +56,16 @@ class PaymentsAction
     public function __invoke(Request $request, ?string $code = null): JsonResponse
     {
         $order = $this->paymentCheckoutOrderResolver->resolve();
+
+        try {
+            $this->orderCheckoutCompleteIntegrityChecker->check($order);
+        } catch (CheckoutValidationException $exception) {
+            return new JsonResponse([
+                'error' => true,
+                'message' => $exception->getMessage(),
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
         $this->messageBus->dispatch(new PrepareOrderForPayment($order));
 
         if (null !== $code) {

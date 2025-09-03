@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 namespace Sylius\AdyenPlugin\Controller\Shop\ExpressCheckout\GooglePay;
 
+use Sylius\AdyenPlugin\Exception\CheckoutValidationException;
 use Sylius\AdyenPlugin\Modifier\ExpressCheckout\GooglePay\OrderAddressModifierInterface;
 use Sylius\AdyenPlugin\Modifier\ExpressCheckout\OrderCustomerModifierInterface;
 use Sylius\AdyenPlugin\Resolver\ExpressCheckout\CheckoutResolverInterface;
@@ -56,6 +57,11 @@ final class CheckoutAction
             $this->checkoutResolver->resolve($order);
 
             return new JsonResponse(['orderToken' => $order->getTokenValue()]);
+        } catch (CheckoutValidationException $exception) {
+            return new JsonResponse([
+                'error' => true,
+                'message' => $exception->getMessage(),
+            ], Response::HTTP_BAD_REQUEST);
         } catch (\Exception $exception) {
             return new JsonResponse([
                 'error' => true,
